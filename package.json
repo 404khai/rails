@@ -1,0 +1,36 @@
+{
+  "name": "rails",
+  "version": "1.0.0",
+  "description": "Developer-first virtual account infrastructure layer built on Nomba.",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/404khai/rails.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/404khai/rails/issues"
+  },
+  "homepage": "https://github.com/404khai/rails#readme",
+  "dependencies": {
+    "@fastify/sensible": "^6.0.4",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  }
+}
