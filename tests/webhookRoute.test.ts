@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createApp } from "../src/app.js";
 import { generateNombaSignature } from "../src/nombaSignature.js";
@@ -18,6 +18,7 @@ const payload = {
       aliasAccountReference: "sampleAccountReference",
       transactionAmount: 10,
       type: "vact_transfer",
+      aliasAccountType: "VIRTUAL",
       transactionId: "API-VACT_TRA-B7B10-0435b274-807a-4bc7-8abe-9db",
       responseCode: "",
       time: "2025-09-29T10:51:44Z",
@@ -56,7 +57,37 @@ describe("Nomba webhook route", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ received: true });
+    expect(response.json()).toEqual({ received: true, queued: false });
+  });
+
+  it("enqueues a verified virtual account transfer when a queue is configured", async () => {
+    const add = vi.fn().mockResolvedValue(undefined);
+    const app = await createApp({
+      logger: false,
+      webhookSecret: secret,
+      queues: {
+        reconciliationQueue: { add },
+      } as never,
+    });
+    apps.push(app);
+    const signature = generateNombaSignature(payload, secret, timestamp);
+    const response = await app.inject({
+      method: "POST",
+      url: "/webhooks/nomba",
+      headers: {
+        "nomba-signature": signature,
+        "nomba-timestamp": timestamp,
+      },
+      payload,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ received: true, queued: true });
+    expect(add).toHaveBeenCalledWith(
+      "reconcile",
+      expect.objectContaining({ payload }),
+      expect.objectContaining({ attempts: 5 }),
+    );
   });
 
   it("rejects an invalid webhook signature", async () => {

@@ -1,17 +1,40 @@
 import "dotenv/config";
 
 import { createApp } from "./app.js";
+import { loadConfig, requireConfig } from "./config.js";
+import { createPrismaClient } from "./db.js";
+import { NombaClient } from "./nombaClient.js";
+import { createQueueServices } from "./queues.js";
 
-const port = Number(process.env.PORT ?? 3000);
-const host = process.env.HOST ?? "0.0.0.0";
-const webhookSecret = process.env.NOMBA_WEBHOOK_SECRET;
-
-if (!webhookSecret) {
-  throw new Error("NOMBA_WEBHOOK_SECRET is required to verify Nomba webhooks");
-}
-
-const app = await createApp({
-  webhookSecret,
+const config = loadConfig();
+const prisma = createPrismaClient();
+const queues = config.REDIS_URL ? createQueueServices(config.REDIS_URL) : undefined;
+const nombaClient = new NombaClient({
+  baseUrl: config.NOMBA_BASE_URL,
+  parentAccountId: requireConfig(config, "NOMBA_PARENT_ACCOUNT_ID"),
+  clientId: requireConfig(config, "NOMBA_CLIENT_ID"),
+  clientSecret: requireConfig(config, "NOMBA_CLIENT_SECRET"),
 });
 
-await app.listen({ host, port });
+const app = await createApp({
+  webhookSecret: config.NOMBA_WEBHOOK_SECRET,
+  config,
+  prisma,
+  queues,
+  nombaClient,
+});
+
+const shutdown = async () => {
+  await app.close();
+  await queues?.close();
+  await prisma.$disconnect();
+};
+
+process.on("SIGINT", () => {
+  void shutdown().then(() => process.exit(0));
+});
+process.on("SIGTERM", () => {
+  void shutdown().then(() => process.exit(0));
+});
+
+await app.listen({ host: config.HOST, port: config.PORT });

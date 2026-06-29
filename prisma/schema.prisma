@@ -1,0 +1,179 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum VirtualAccountStatus {
+  active
+  expired
+  suspended
+}
+
+enum TransactionStatus {
+  matched
+  underpaid
+  overpaid
+  misdirected
+  duplicate
+}
+
+enum OutboundWebhookDeliveryStatus {
+  pending
+  delivered
+  failed
+}
+
+model Customer {
+  id                  String   @id @default(uuid())
+  tenantId            String
+  externalReference   String
+  name                String
+  email               String?
+  expectedAmountKobo  Int
+  metadata            Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  virtualAccounts     VirtualAccount[]
+  transactions        Transaction[]
+  reconciliationEvents ReconciliationEvent[]
+
+  @@unique([tenantId, externalReference])
+  @@index([tenantId])
+  @@map("customers")
+}
+
+model VirtualAccount {
+  id                   String               @id @default(uuid())
+  tenantId             String
+  customerId           String
+  accountRef           String
+  accountHolderId      String?
+  bankAccountNumber    String
+  bankAccountName      String?
+  bankName             String?
+  currency             String               @default("NGN")
+  status               VirtualAccountStatus @default(active)
+  nombaCreatedAt       DateTime?
+  rawNombaResponse     Json?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  customer             Customer             @relation(fields: [customerId], references: [id])
+  transactions         Transaction[]
+
+  @@unique([tenantId, accountRef])
+  @@unique([tenantId, bankAccountNumber])
+  @@index([tenantId, customerId])
+  @@map("virtual_accounts")
+}
+
+model Transaction {
+  id                   String            @id @default(uuid())
+  tenantId             String
+  customerId           String?
+  virtualAccountId     String?
+  nombaTransactionId   String?
+  nombaSessionId       String?
+  requestId            String?
+  amountKobo           Int
+  expectedAmountKobo   Int?
+  status               TransactionStatus
+  eventType            String
+  transactionType      String?
+  aliasAccountNumber   String?
+  aliasAccountReference String?
+  senderName           String?
+  senderBankName       String?
+  senderBankCode       String?
+  senderAccountNumber  String?
+  narration            String?
+  paidAt               DateTime?
+  rawPayload           Json
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  customer             Customer?         @relation(fields: [customerId], references: [id])
+  virtualAccount       VirtualAccount?   @relation(fields: [virtualAccountId], references: [id])
+  reconciliationEvents ReconciliationEvent[]
+
+  @@unique([tenantId, nombaTransactionId])
+  @@unique([tenantId, nombaSessionId])
+  @@index([tenantId, customerId, paidAt])
+  @@index([tenantId, status])
+  @@map("transactions")
+}
+
+model ReconciliationEvent {
+  id                   String            @id @default(uuid())
+  tenantId             String
+  customerId           String?
+  transactionId        String?
+  status               TransactionStatus
+  reason               String
+  payload              Json?
+  createdAt            DateTime          @default(now())
+
+  customer             Customer?         @relation(fields: [customerId], references: [id])
+  transaction          Transaction?      @relation(fields: [transactionId], references: [id])
+
+  @@index([tenantId, customerId, createdAt])
+  @@map("reconciliation_events")
+}
+
+model ApiKey {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  label                String
+  prefix               String
+  keyHash              String   @unique
+  active               Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  revokedAt            DateTime?
+  lastUsedAt           DateTime?
+
+  @@index([tenantId])
+  @@map("api_keys")
+}
+
+model OutboundWebhookSubscription {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  url                  String
+  events               String[]
+  active               Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  deliveries           OutboundWebhookDeliveryLog[]
+
+  @@index([tenantId, active])
+  @@map("outbound_webhook_subscriptions")
+}
+
+model OutboundWebhookDeliveryLog {
+  id                   String                         @id @default(uuid())
+  tenantId             String
+  subscriptionId       String
+  eventId              String
+  eventType            String
+  payload              Json
+  signature            String?
+  status               OutboundWebhookDeliveryStatus  @default(pending)
+  attempts             Int                            @default(0)
+  responseStatus       Int?
+  responseBody         String?
+  nextAttemptAt        DateTime?
+  deliveredAt          DateTime?
+  createdAt            DateTime                       @default(now())
+  updatedAt            DateTime                       @updatedAt
+
+  subscription         OutboundWebhookSubscription    @relation(fields: [subscriptionId], references: [id])
+
+  @@unique([subscriptionId, eventId])
+  @@index([tenantId, eventType, createdAt])
+  @@map("outbound_webhook_delivery_log")
+}
