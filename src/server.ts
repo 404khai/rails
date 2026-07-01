@@ -4,11 +4,12 @@ import { createApp } from "./app.js";
 import { loadConfig, requireConfig } from "./config.js";
 import { createPrismaClient } from "./db.js";
 import { NombaClient } from "./nombaClient.js";
-import { createQueueServices } from "./queues.js";
+import { createQueueServices, isRedisAvailable } from "./queues.js";
 
 const config = loadConfig();
 const prisma = createPrismaClient();
-const queues = config.REDIS_URL ? createQueueServices(config.REDIS_URL) : undefined;
+const redisAvailable = config.REDIS_URL ? await isRedisAvailable(config.REDIS_URL) : false;
+const queues = config.REDIS_URL && redisAvailable ? createQueueServices(config.REDIS_URL) : undefined;
 const nombaClient = new NombaClient({
   baseUrl: config.NOMBA_BASE_URL,
   parentAccountId: requireConfig(config, "NOMBA_PARENT_ACCOUNT_ID"),
@@ -23,6 +24,10 @@ const app = await createApp({
   queues,
   nombaClient,
 });
+
+if (config.REDIS_URL && !redisAvailable) {
+  app.log.warn("Redis is unavailable; Nomba webhooks will be acknowledged but not queued");
+}
 
 const shutdown = async () => {
   await app.close();
