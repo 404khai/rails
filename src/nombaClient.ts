@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 export type NombaClientOptions = {
   baseUrl: string;
   parentAccountId: string;
+  subAccountId: string;
   clientId: string;
   clientSecret: string;
   fetchImpl?: typeof fetch;
@@ -11,9 +12,9 @@ export type NombaClientOptions = {
 export type CreateVirtualAccountInput = {
   accountRef: string;
   accountName: string;
-  currency?: "NGN";
   bvn?: string;
   expectedAmount?: number;
+  expiryDate?: string;
 };
 
 export type NombaVirtualAccount = {
@@ -59,14 +60,12 @@ export class NombaClient {
   }
 
   async createVirtualAccount(input: CreateVirtualAccountInput): Promise<NombaVirtualAccount> {
+    const subAccountId = encodeURIComponent(this.options.subAccountId);
     const response = await this.request<{ data: NombaVirtualAccount }>(
-      "/v1/accounts/virtual",
+      `/v1/accounts/virtual/${subAccountId}`,
       {
         method: "POST",
-        body: JSON.stringify({
-          currency: "NGN",
-          ...input,
-        }),
+        body: JSON.stringify(input),
       },
       true,
     );

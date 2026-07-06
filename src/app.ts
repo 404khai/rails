@@ -294,7 +294,6 @@ export const createApp = async ({
       const nombaAccount = await nombaClient.createVirtualAccount({
         accountRef,
         accountName,
-        currency: "NGN",
         bvn: request.body.bvn,
       });
 

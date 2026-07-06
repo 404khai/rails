@@ -13,6 +13,7 @@ const queues = config.REDIS_URL && redisAvailable ? createQueueServices(config.R
 const nombaClient = new NombaClient({
   baseUrl: config.NOMBA_BASE_URL,
   parentAccountId: requireConfig(config, "NOMBA_PARENT_ACCOUNT_ID"),
+  subAccountId: requireConfig(config, "NOMBA_SUB_ACCOUNT_ID"),
   clientId: requireConfig(config, "NOMBA_CLIENT_ID"),
   clientSecret: requireConfig(config, "NOMBA_CLIENT_SECRET"),
 });
