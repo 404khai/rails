@@ -60,7 +60,7 @@ DATABASE_URL=postgresql://...
 REDIS_URL=redis://...
 NOMBA_BASE_URL=https://sandbox.nomba.com
 NOMBA_PARENT_ACCOUNT_ID=<parent account ID from Nomba>
-NOMBA_SUB_ACCOUNT_ID=<sub-account ID from Nomba>
+NOMBA_SUB_ACCOUNT_ID=<sub-account ID from Nomba — used in POST /v1/accounts/virtual/{subAccountId}>
 NOMBA_CLIENT_ID=<client ID from Nomba>
 NOMBA_CLIENT_SECRET=<private key from Nomba>
 NOMBA_WEBHOOK_SECRET=<webhook signing key from Nomba>
@@ -101,7 +101,9 @@ curl -X POST http://localhost:3000/customers \
   }'
 ```
 
-Provision the student’s Nomba virtual account.
+Provision the student’s Nomba virtual account. Rails calls Nomba
+[`POST /v1/accounts/virtual/{subAccountId}`](https://developer.nomba.com/nomba-api-reference/virtual-accounts/create-virtual-account-for-sub-account)
+with the parent `accountId` header and your `NOMBA_SUB_ACCOUNT_ID` in the path.
 
 ```bash
 curl -X POST http://localhost:3000/customers/student-001/accounts \
