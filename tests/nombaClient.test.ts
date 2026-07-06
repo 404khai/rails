@@ -33,6 +33,7 @@ describe("Nomba client", () => {
     const client = new NombaClient({
       baseUrl: "https://sandbox.nomba.com",
       parentAccountId: "parent-account",
+      subAccountId: "sub-account",
       clientId: "client-id",
       clientSecret: "client-secret",
       fetchImpl,
@@ -49,12 +50,18 @@ describe("Nomba client", () => {
 
     expect(fetchImpl).toHaveBeenCalledTimes(3);
     expect(fetchImpl.mock.calls[0]?.[0]).toBe("https://sandbox.nomba.com/v1/auth/token/issue");
-    expect(fetchImpl.mock.calls[1]?.[0]).toBe("https://sandbox.nomba.com/v1/accounts/virtual");
+    expect(fetchImpl.mock.calls[1]?.[0]).toBe(
+      "https://sandbox.nomba.com/v1/accounts/virtual/sub-account",
+    );
     expect(fetchImpl.mock.calls[1]?.[1]).toMatchObject({
       method: "POST",
       headers: expect.objectContaining({
         Authorization: "Bearer token-1",
         accountId: "parent-account",
+      }),
+      body: JSON.stringify({
+        accountRef: "rails_student_001",
+        accountName: "Student One",
       }),
     });
   });
@@ -67,6 +74,7 @@ describe("Nomba client", () => {
     const client = new NombaClient({
       baseUrl: "https://sandbox.nomba.com",
       parentAccountId: "parent-account",
+      subAccountId: "sub-account",
       clientId: "client-id",
       clientSecret: "client-secret",
       fetchImpl,
