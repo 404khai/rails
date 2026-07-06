@@ -28,7 +28,28 @@ Start the worker in a second terminal:
 npm run dev:worker
 ```
 
-Fill `.env` with sandbox credentials from Nomba before calling live Nomba endpoints. Do not commit real credentials or private keys.
+Fill `.env` with Nomba credentials before calling live endpoints. Do not commit real credentials or private keys.
+
+### Generate Rails-owned secrets
+
+Set these in Render (or local `.env`). Generate fresh values — never commit them:
+
+```bash
+# Signs outbound webhooks Rails delivers to downstream subscribers (required for worker)
+openssl rand -base64 32
+
+# Protects POST /api-keys after the first tenant key has been created
+openssl rand -base64 32
+```
+
+Map the outputs to:
+
+```text
+RAILS_WEBHOOK_SECRET=<first command output>
+ADMIN_BOOTSTRAP_TOKEN=<second command output>
+```
+
+`NOMBA_WEBHOOK_SECRET` is provided by Nomba (sandbox and production may share the hackathon signing key). It is separate from `NOMBA_CLIENT_SECRET`.
 
 ## Environment
 
@@ -40,20 +61,29 @@ REDIS_URL=redis://...
 NOMBA_BASE_URL=https://sandbox.nomba.com
 NOMBA_PARENT_ACCOUNT_ID=<parent account ID from Nomba>
 NOMBA_SUB_ACCOUNT_ID=<sub-account ID from Nomba>
-NOMBA_CLIENT_ID=<test client ID from Nomba>
-NOMBA_CLIENT_SECRET=<test private key from Nomba>
+NOMBA_CLIENT_ID=<client ID from Nomba>
+NOMBA_CLIENT_SECRET=<private key from Nomba>
 NOMBA_WEBHOOK_SECRET=<webhook signing key from Nomba>
-RAILS_WEBHOOK_SECRET=<Rails outbound signing key>
-ADMIN_BOOTSTRAP_TOKEN=<one-time admin token for creating API keys after bootstrap>
+RAILS_WEBHOOK_SECRET=<output of openssl rand -base64 32>
+ADMIN_BOOTSTRAP_TOKEN=<output of openssl rand -base64 32>
 ```
 
 ## Demo Quickstart
 
-Create an API key. The first key can be created without a bootstrap token; later keys require `x-bootstrap-token`.
+Create an API key. The first key can be created without a bootstrap token; later keys require `x-bootstrap-token` matching `ADMIN_BOOTSTRAP_TOKEN`.
 
 ```bash
 curl -X POST http://localhost:3000/api-keys \
   -H 'Content-Type: application/json' \
+  -d '{"tenantId":"demo-school","label":"Demo School"}'
+```
+
+Create additional tenant keys after bootstrap:
+
+```bash
+curl -X POST https://<your-app>.onrender.com/api-keys \
+  -H 'Content-Type: application/json' \
+  -H 'x-bootstrap-token: <ADMIN_BOOTSTRAP_TOKEN>' \
   -d '{"tenantId":"demo-school","label":"Demo School"}'
 ```
 
@@ -140,24 +170,56 @@ Rails stores expected school-fee amounts internally instead of setting Nomba `ex
 
 ## Deployment
 
-Use two Railway services against the same Supabase Postgres and Upstash Redis:
+Hosted on Render with Supabase Postgres and Upstash Redis. Start command runs API + worker:
 
-- API service: `npm run build && npm run start`
-- Worker service: `npm run build && npm run start:worker`
-- Release/migration command: `npm run db:deploy`
+```text
+sh -c "node dist/src/worker.js & node dist/src/server.js"
+```
+
+Build: `npm ci && npm run build`
+
+### Keep Render awake (required for Nomba webhooks)
+
+Render free tier sleeps after ~15 minutes of inactivity. Webhooks sent while asleep can be lost.
+
+Use [UptimeRobot](https://uptimerobot.com) (free tier pings every 5 minutes):
+
+1. Create account at https://uptimerobot.com
+2. Add **HTTP(s) monitor**
+3. URL: `https://<your-app>.onrender.com/health`
+4. Monitoring interval: **5 minutes**
+5. Expected response: `200` with body `{"ok":true,"service":"rails"}`
+
+Do not ping `/webhooks/nomba` — that route is POST-only and returns 404 on GET.
 
 Nomba sandbox limits to remember for the demo: each user can create up to 2 virtual accounts, each account can receive transfers up to ₦150, and sandbox virtual-account expiration is limited.
 
-## Demo Video Script
 
-1. Show `/docs` and the school-fees problem statement.
-2. Create `student-001` with expected amount ₦150.
-3. Provision the student virtual account through Rails.
-4. Register a webhook.site subscription for Rails outbound events.
-5. Trigger or replay a Nomba `payment_success` virtual-account webhook.
-6. Show the reconciled statement and transaction history.
-7. Replay the same webhook to demonstrate duplicate protection.
-8. Show a misdirected webhook payload and the `transfer.misdirected` outbound event.
+## Operational Scripts
+
+Replay a signed Nomba webhook (use account values from `POST /customers/:id/accounts`):
+
+```bash
+export NOMBA_WEBHOOK_SECRET='<nomba-webhook-signing-key>'
+WEBHOOK_URL=https://<your-app>.onrender.com/webhooks/nomba \
+ALIAS_ACCOUNT_NUMBER='<bankAccountNumber>' \
+ALIAS_ACCOUNT_REFERENCE='<accountRef>' \
+ALIAS_ACCOUNT_NAME='<bankAccountName>' \
+TRANSACTION_AMOUNT=150 \
+./scripts/send-demo-nomba-webhook.sh
+```
+
+Backtrack payments on Nomba before Rails receives a webhook:
+
+```bash
+NOMBA_BASE_URL=https://api.nomba.com \
+NOMBA_PARENT_ACCOUNT_ID='<parent-account-id>' \
+NOMBA_CLIENT_ID='<client-id>' \
+NOMBA_CLIENT_SECRET='<private-key>' \
+node scripts/fetch-nomba-va-transactions.mjs <virtual-account-number>
+```
+
+Use Nomba `transactionId`, `sessionId`, and amount from that output to replay a missed webhook with `send-demo-nomba-webhook.sh`.
 
 ## Scripts
 
