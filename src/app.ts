@@ -103,6 +103,27 @@ const serializeTransaction = (transaction: {
   createdAt: transaction.createdAt.toISOString(),
 });
 
+const bearerAuthSecurity = [{ BearerAuth: [] }] as const;
+
+const openApiDocument = {
+  info: {
+    title: "Rails API",
+    description: "Nomba virtual-account reconciliation infrastructure.",
+    version: "1.0.0",
+  },
+  components: {
+    securitySchemes: {
+      BearerAuth: {
+        type: "http" as const,
+        scheme: "bearer" as const,
+        bearerFormat: "API key",
+        description:
+          "Rails tenant API key from POST /api-keys. Use Authorization: Bearer <key>.",
+      },
+    },
+  },
+};
+
 export const createApp = async ({
   logger = true,
   webhookSecret,
@@ -115,22 +136,27 @@ export const createApp = async ({
 
   await app.register(sensible);
   await app.register(swagger, {
-    openapi: {
-      info: {
-        title: "Rails API",
-        description: "Nomba virtual-account reconciliation infrastructure.",
-        version: "1.0.0",
-      },
-    },
+    openapi: openApiDocument,
   });
   await app.register(swaggerUi, {
     routePrefix: "/docs",
+    uiConfig: {
+      persistAuthorization: true,
+    },
   });
 
-  app.get("/health", async () => ({
-    ok: true,
-    service: "rails",
-  }));
+  app.get(
+    "/health",
+    {
+      schema: {
+        security: [],
+      },
+    },
+    async () => ({
+      ok: true,
+      service: "rails",
+    }),
+  );
 
   app.post<{
     Body: {
@@ -141,6 +167,7 @@ export const createApp = async ({
     "/api-keys",
     {
       schema: {
+        security: [],
         body: {
           type: "object",
           properties: {
@@ -181,6 +208,7 @@ export const createApp = async ({
     "/customers",
     {
       schema: {
+        security: bearerAuthSecurity,
         body: {
           type: "object",
           required: ["externalReference", "name", "expectedAmount"],
@@ -240,6 +268,7 @@ export const createApp = async ({
     "/customers/:id/accounts",
     {
       schema: {
+        security: bearerAuthSecurity,
         params: {
           type: "object",
           required: ["id"],
@@ -339,7 +368,11 @@ export const createApp = async ({
       limit?: string;
       cursor?: string;
     };
-  }>("/customers/:id/transactions", async (request) => {
+  }>("/customers/:id/transactions", {
+    schema: {
+      security: bearerAuthSecurity,
+    },
+    handler: async (request) => {
     const database = requirePrisma(request, prisma);
     const auth = await requireAuthenticated(request, database);
     const customer = await getCustomer(database, auth, request.params.id);
@@ -374,6 +407,7 @@ export const createApp = async ({
       data: page.map(serializeTransaction),
       nextCursor: transactions.length > limit ? transactions[limit]?.id : null,
     };
+    },
   });
 
   app.get<{
@@ -382,7 +416,11 @@ export const createApp = async ({
       dateFrom?: string;
       dateTo?: string;
     };
-  }>("/customers/:id/statement", async (request) => {
+  }>("/customers/:id/statement", {
+    schema: {
+      security: bearerAuthSecurity,
+    },
+    handler: async (request) => {
     const database = requirePrisma(request, prisma);
     const auth = await requireAuthenticated(request, database);
     const customer = await getCustomer(database, auth, request.params.id);
@@ -436,6 +474,7 @@ export const createApp = async ({
       },
       transactions: transactions.map(serializeTransaction),
     };
+    },
   });
 
   app.post<{
@@ -447,6 +486,7 @@ export const createApp = async ({
     "/webhook-subscriptions",
     {
       schema: {
+        security: bearerAuthSecurity,
         body: {
           type: "object",
           required: ["url", "events"],
@@ -488,7 +528,14 @@ export const createApp = async ({
     },
   );
 
-  app.post("/webhooks/nomba", async (request, reply) => {
+  app.post(
+    "/webhooks/nomba",
+    {
+      schema: {
+        security: [],
+      },
+    },
+    async (request, reply) => {
     const body = getBodyObject(request.body);
 
     if (!body) {
@@ -567,7 +614,8 @@ export const createApp = async ({
       received: true,
       queued: Boolean(queues && isVirtualAccountPayment),
     });
-  });
+    },
+  );
 
   return app;
 };
