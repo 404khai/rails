@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 
 import type { PrismaService } from "./db.js";
 import { toKobo } from "./money.js";
-import type { OutboundWebhookJob, QueueServices } from "./queues.js";
+import type { JobProcessor } from "./jobs/types.js";
 
 export type ReconciliationStatus =
   | "matched"
@@ -127,7 +127,7 @@ const parsePaidAt = (value: string | undefined): Date | undefined => {
 export const reconcileNombaWebhook = async (
   prisma: PrismaService,
   payload: NombaPaymentWebhook,
-  queues?: Pick<QueueServices, "outboundWebhookQueue">,
+  jobProcessor?: Pick<JobProcessor, "enqueueOutboundDelivery">,
 ): Promise<{ transactionId?: string; status: ReconciliationStatus }> => {
   const transfer = payload.data?.transaction;
   const sender = payload.data?.customer;
@@ -253,7 +253,7 @@ export const reconcileNombaWebhook = async (
         reason: decision.reason,
         paidAt: transaction.paidAt?.toISOString(),
       },
-    }, queues);
+    }, jobProcessor);
   }
 
   return {
@@ -265,7 +265,7 @@ export const reconcileNombaWebhook = async (
 export const createOutboundDeliveries = async (
   prisma: PrismaService,
   input: { tenantId: string; eventType: TransferEventType; payload: Record<string, unknown> },
-  queues?: Pick<QueueServices, "outboundWebhookQueue">,
+  jobProcessor?: Pick<JobProcessor, "enqueueOutboundDelivery">,
 ): Promise<void> => {
   const subscriptions = await prisma.outboundWebhookSubscription.findMany({
     where: {
@@ -289,14 +289,7 @@ export const createOutboundDeliveries = async (
         },
       });
 
-      const job: OutboundWebhookJob = { deliveryId: delivery.id };
-      await queues?.outboundWebhookQueue.add("deliver", job, {
-        attempts: 5,
-        backoff: {
-          type: "exponential",
-          delay: 30_000,
-        },
-      });
+      await jobProcessor?.enqueueOutboundDelivery(delivery.id);
     }),
   );
 };
