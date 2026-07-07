@@ -6,6 +6,14 @@ const envSchema = z.object({
   HOST: z.string().default("0.0.0.0"),
   DATABASE_URL: z.string().min(1).optional(),
   REDIS_URL: z.string().min(1).optional(),
+  JOB_PROCESSOR: z.enum(["inline", "bullmq"]).default("inline"),
+  BULLMQ_WORKERS_ENABLED: z
+    .string()
+    .optional()
+    .default("true")
+    .transform((value) => value !== "false" && value !== "0"),
+  BULLMQ_STALLED_INTERVAL_MS: z.coerce.number().int().positive().default(120_000),
+  BULLMQ_DRAIN_DELAY_MS: z.coerce.number().int().positive().default(30_000),
   NOMBA_BASE_URL: z.string().url().default("https://sandbox.nomba.com"),
   NOMBA_PARENT_ACCOUNT_ID: z.string().min(1).optional(),
   NOMBA_SUB_ACCOUNT_ID: z.string().min(1).optional(),

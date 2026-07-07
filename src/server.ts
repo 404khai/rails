@@ -3,13 +3,13 @@ import "dotenv/config";
 import { createApp } from "./app.js";
 import { loadConfig, requireConfig } from "./config.js";
 import { createPrismaClient } from "./db.js";
+import { createJobProcessor } from "./jobs/factory.js";
 import { NombaClient } from "./nombaClient.js";
-import { createQueueServices, isRedisAvailable } from "./queues.js";
 
 const config = loadConfig();
 const prisma = createPrismaClient();
-const redisAvailable = config.REDIS_URL ? await isRedisAvailable(config.REDIS_URL) : false;
-const queues = config.REDIS_URL && redisAvailable ? createQueueServices(config.REDIS_URL) : undefined;
+const railsWebhookSecret = requireConfig(config, "RAILS_WEBHOOK_SECRET");
+const { jobProcessor, warning } = await createJobProcessor(config, prisma, railsWebhookSecret);
 const nombaClient = new NombaClient({
   baseUrl: config.NOMBA_BASE_URL,
   parentAccountId: requireConfig(config, "NOMBA_PARENT_ACCOUNT_ID"),
@@ -22,17 +22,17 @@ const app = await createApp({
   webhookSecret: config.NOMBA_WEBHOOK_SECRET,
   config,
   prisma,
-  queues,
+  jobProcessor,
   nombaClient,
 });
 
-if (config.REDIS_URL && !redisAvailable) {
-  app.log.warn("Redis is unavailable; Nomba webhooks will be acknowledged but not queued");
+if (warning) {
+  app.log.warn(warning);
 }
 
 const shutdown = async () => {
   await app.close();
-  await queues?.close();
+  await jobProcessor?.close();
   await prisma.$disconnect();
 };
 

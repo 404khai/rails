@@ -1,8 +1,24 @@
 # Rails Architecture and Security Note
 
-Rails is a Fastify/TypeScript API plus BullMQ worker that turns Nomba virtual-account transfers into customer-level ledger entries.
+Rails is a Fastify/TypeScript API that turns Nomba virtual-account transfers into customer-level ledger entries. Background work runs either **in-process** (default) or via **BullMQ workers** when `JOB_PROCESSOR=bullmq`.
 
 ## Architecture
+
+### Default (inline processor — recommended for low traffic)
+
+```mermaid
+flowchart LR
+  clientApp[Downstream App] -->|"API key"| api[Rails API]
+  api --> db[(Postgres)]
+  api -->|"OAuth token"| nomba[Nomba API]
+  nomba -->|"payment_success"| webhook[Webhook Receiver]
+  webhook -->|"verified async job"| inline[Inline Job Processor]
+  inline --> db
+  inline --> outbound[Outbound Webhook Delivery]
+  outbound --> clientWebhook[Downstream URL]
+```
+
+### Optional BullMQ mode
 
 ```mermaid
 flowchart LR
@@ -17,7 +33,7 @@ flowchart LR
   outbound --> clientWebhook[Downstream URL]
 ```
 
-The API handles customer creation, Nomba virtual-account provisioning, transaction history, statements, and webhook subscription management. The worker handles reconciliation and outbound webhook delivery so Nomba webhook requests can return quickly.
+The API handles customer creation, Nomba virtual-account provisioning, transaction history, statements, and webhook subscription management. Reconciliation and outbound webhook delivery run asynchronously so Nomba webhook requests can return quickly.
 
 ## Data Handling
 
@@ -72,7 +88,7 @@ Delivery attempts and responses are persisted for auditability and retries.
 
 ## Reliability
 
-Nomba webhook ingestion returns `200` after verification and enqueueing, avoiding repeated Nomba retries during normal operation. BullMQ retries reconciliation and outbound webhook delivery with exponential backoff. Database unique constraints enforce idempotency even if workers retry.
+Nomba webhook ingestion returns `200` after verification and enqueueing, avoiding repeated Nomba retries during normal operation. With `JOB_PROCESSOR=inline`, retries use in-process exponential backoff (5 attempts, 30s base delay). With `JOB_PROCESSOR=bullmq`, BullMQ retries reconciliation and outbound webhook delivery with the same backoff policy. Database unique constraints enforce idempotency even if workers retry.
 
 ## Sensitive Configuration
 

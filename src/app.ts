@@ -11,14 +11,14 @@ import type { PrismaService } from "./db.js";
 import { toKobo, fromKobo } from "./money.js";
 import type { NombaClient } from "./nombaClient.js";
 import { verifyNombaSignature, type NombaWebhookPayload } from "./nombaSignature.js";
-import type { QueueServices } from "./queues.js";
+import type { JobProcessor } from "./jobs/types.js";
 
 type CreateAppOptions = {
   logger?: boolean | FastifyBaseLogger;
   webhookSecret: string;
   config?: Partial<AppConfig>;
   prisma?: PrismaService;
-  queues?: QueueServices;
+  jobProcessor?: JobProcessor;
   nombaClient?: NombaClient;
 };
 
@@ -129,7 +129,7 @@ export const createApp = async ({
   webhookSecret,
   config,
   prisma,
-  queues,
+  jobProcessor,
   nombaClient,
 }: CreateAppOptions) => {
   const app = Fastify({ logger });
@@ -584,21 +584,7 @@ export const createApp = async ({
     );
 
     if (isVirtualAccountPayment) {
-      await queues?.reconciliationQueue.add(
-        "reconcile",
-        {
-          payload: body,
-          receivedAt: new Date().toISOString(),
-        },
-        {
-          attempts: 5,
-          backoff: {
-            type: "exponential",
-            delay: 30_000,
-          },
-          removeOnComplete: 100,
-        },
-      );
+      await jobProcessor?.enqueueReconciliation(body, new Date().toISOString());
     } else {
       request.log.info(
         {
@@ -612,7 +598,7 @@ export const createApp = async ({
 
     return reply.code(200).send({
       received: true,
-      queued: Boolean(queues && isVirtualAccountPayment),
+      queued: Boolean(jobProcessor && isVirtualAccountPayment),
     });
     },
   );

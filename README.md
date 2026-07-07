@@ -22,11 +22,13 @@ npm run db:migrate
 npm run dev
 ```
 
-Start the worker in a second terminal:
+Start the worker in a second terminal only when using BullMQ:
 
 ```bash
-npm run dev:worker
+JOB_PROCESSOR=bullmq npm run dev:worker
 ```
+
+With the default `JOB_PROCESSOR=inline`, the API processes webhooks in-process — no Redis or worker process required.
 
 Fill `.env` with Nomba credentials before calling live endpoints. Do not commit real credentials or private keys.
 
@@ -35,7 +37,7 @@ Fill `.env` with Nomba credentials before calling live endpoints. Do not commit 
 Set these in Render (or local `.env`). Generate fresh values — never commit them:
 
 ```bash
-# Signs outbound webhooks Rails delivers to downstream subscribers (required for worker)
+# Signs outbound webhooks Rails delivers to downstream subscribers (required for inline mode and BullMQ worker)
 openssl rand -base64 32
 
 # Protects POST /api-keys after the first tenant key has been created
@@ -57,6 +59,7 @@ ADMIN_BOOTSTRAP_TOKEN=<second command output>
 PORT=3000
 HOST=0.0.0.0
 DATABASE_URL=postgresql://...
+JOB_PROCESSOR=inline
 REDIS_URL=redis://...
 NOMBA_BASE_URL=https://sandbox.nomba.com
 NOMBA_PARENT_ACCOUNT_ID=<parent account ID from Nomba>
@@ -178,13 +181,42 @@ Rails stores expected school-fee amounts internally instead of setting Nomba `ex
 
 ## Deployment
 
-Hosted on Render with Supabase Postgres and Upstash Redis. Start command runs API + worker:
+Hosted on Render with Supabase Postgres. **Recommended free-tier setup uses inline job processing (no Redis).**
+
+Render start command (inline — no worker, no Upstash idle polling):
+
+```text
+node dist/src/server.js
+```
+
+Build: `npm ci && npm run build`
+
+Environment for Render free tier:
+
+```text
+JOB_PROCESSOR=inline
+```
+
+`REDIS_URL` is optional when `JOB_PROCESSOR=inline`. Do not run `worker.js` unless you opt into BullMQ.
+
+### Optional: BullMQ + Upstash
+
+If you need Redis-backed queues at higher scale:
+
+```text
+JOB_PROCESSOR=bullmq
+REDIS_URL=<upstash-redis-url>
+BULLMQ_STALLED_INTERVAL_MS=120000
+BULLMQ_DRAIN_DELAY_MS=30000
+```
+
+Start command (API + worker in one container):
 
 ```text
 sh -c "node dist/src/worker.js & node dist/src/server.js"
 ```
 
-Build: `npm ci && npm run build`
+See [docs/bullmq-redis-audit.md](docs/bullmq-redis-audit.md) for idle Redis command analysis and tuning.
 
 ### Keep Render awake (required for Nomba webhooks)
 

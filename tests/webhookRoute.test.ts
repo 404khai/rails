@@ -60,14 +60,17 @@ describe("Nomba webhook route", () => {
     expect(response.json()).toEqual({ received: true, queued: false });
   });
 
-  it("enqueues a verified virtual account transfer when a queue is configured", async () => {
-    const add = vi.fn().mockResolvedValue(undefined);
+  it("enqueues a verified virtual account transfer when a job processor is configured", async () => {
+    const enqueueReconciliation = vi.fn().mockResolvedValue(undefined);
     const app = await createApp({
       logger: false,
       webhookSecret: secret,
-      queues: {
-        reconciliationQueue: { add },
-      } as never,
+      jobProcessor: {
+        mode: "bullmq",
+        enqueueReconciliation,
+        enqueueOutboundDelivery: vi.fn(),
+        close: vi.fn(),
+      },
     });
     apps.push(app);
     const signature = generateNombaSignature(payload, secret, timestamp);
@@ -83,10 +86,9 @@ describe("Nomba webhook route", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ received: true, queued: true });
-    expect(add).toHaveBeenCalledWith(
-      "reconcile",
-      expect.objectContaining({ payload }),
-      expect.objectContaining({ attempts: 5 }),
+    expect(enqueueReconciliation).toHaveBeenCalledWith(
+      expect.objectContaining(payload),
+      expect.any(String),
     );
   });
 
