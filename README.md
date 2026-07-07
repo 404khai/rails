@@ -124,6 +124,12 @@ curl -X POST http://localhost:3000/webhook-subscriptions \
   }'
 ```
 
+Get the student's transactions
+```bash
+curl "https://localhost:3000/customers/student-001/transactions" \
+  -H 'Authorization: Bearer <rails-api-key>'
+```
+
 Fetch the student statement.
 
 ```bash
