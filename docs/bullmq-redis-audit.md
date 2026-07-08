@@ -124,7 +124,7 @@ flowchart TB
   q4 --> redis
   w1 -->|"poll + stalled-check 24/7"| redis
   w2 -->|"poll + stalled-check 24/7"| redis
-  health[/health] -.->|"no Redis"| api
+  healthNode["GET /health"] -.->|"no Redis"| api
 ```
 
 ### After (recommended: inline)
@@ -140,7 +140,7 @@ flowchart TB
   db[(Postgres)]
   recon --> db
   out --> db
-  health[/health] -.-> api
+  healthNode["GET /health"] -.-> api
 ```
 
 ### After (optional: optimized BullMQ)
